@@ -90,6 +90,7 @@ func TestInfo(t *testing.T) {
 	setFlags()
 	defer logging.swap(logging.newBuffers())
 	Info("test")
+	logging.wait()
 	if !contains(infoLog, "I", t) {
 		t.Errorf("Info has wrong character: %q", contents(infoLog))
 	}
@@ -104,11 +105,13 @@ func TestInfoDepth(t *testing.T) {
 
 	f := func() { InfoDepth(1, "depth-test1") }
 
-	// The next three lines must stay together
+	// wantLine must match the InfoDepth call lines
 	_, _, wantLine, _ := runtime.Caller(0)
 	InfoDepth(0, "depth-test0")
+	logging.wait()
 	f()
-
+	logging.wait()
+	
 	msgs := strings.Split(strings.TrimSuffix(contents(infoLog), "\n"), "\n")
 	if len(msgs) != 2 {
 		t.Fatalf("Got %d lines, expected 2", len(msgs))
@@ -139,6 +142,7 @@ func TestInfoDepth(t *testing.T) {
 		if wantLine != line {
 			t.Errorf("InfoDepth[%d]: got line %d, want %d", i, line, wantLine)
 		}
+		wantLine++
 	}
 }
 
@@ -161,6 +165,7 @@ func TestStandardLog(t *testing.T) {
 	setFlags()
 	defer logging.swap(logging.newBuffers())
 	stdLog.Print("test")
+	logging.wait()
 	if !contains(infoLog, "I", t) {
 		t.Errorf("Info has wrong character: %q", contents(infoLog))
 	}
@@ -179,6 +184,7 @@ func TestHeader(t *testing.T) {
 	}
 	pid = 1234
 	Info("test")
+	logging.wait()
 	var line int
 	format := "I0102 15:04:05.067890    1234 glog_test.go:%d] test\n"
 	n, err := fmt.Sscanf(contents(infoLog), format, &line)
@@ -200,6 +206,7 @@ func TestError(t *testing.T) {
 	setFlags()
 	defer logging.swap(logging.newBuffers())
 	Error("test")
+	logging.wait()
 	if !contains(errorLog, "E", t) {
 		t.Errorf("Error has wrong character: %q", contents(errorLog))
 	}
@@ -222,6 +229,7 @@ func TestWarning(t *testing.T) {
 	setFlags()
 	defer logging.swap(logging.newBuffers())
 	Warning("test")
+	logging.wait()
 	if !contains(warningLog, "W", t) {
 		t.Errorf("Warning has wrong character: %q", contents(warningLog))
 	}
@@ -241,6 +249,7 @@ func TestV(t *testing.T) {
 	logging.verbosity.Set("2")
 	defer logging.verbosity.Set("0")
 	V(2).Info("test")
+	logging.wait()
 	if !contains(infoLog, "I", t) {
 		t.Errorf("Info has wrong character: %q", contents(infoLog))
 	}
@@ -265,6 +274,7 @@ func TestVmoduleOn(t *testing.T) {
 		t.Error("V enabled for 3")
 	}
 	V(2).Info("test")
+	logging.wait()
 	if !contains(infoLog, "I", t) {
 		t.Errorf("Info has wrong character: %q", contents(infoLog))
 	}
@@ -337,6 +347,7 @@ func TestRollover(t *testing.T) {
 	MaxSize = 512
 
 	Info("x") // Be sure we have a file.
+	logging.wait()
 	info, ok := logging.file[infoLog].(*syncBuffer)
 	if !ok {
 		t.Fatal("info wasn't created")
@@ -359,6 +370,7 @@ func TestRollover(t *testing.T) {
 	time.Sleep(1 * time.Second)
 
 	Info("x") // create a new file
+	logging.wait()
 	if err != nil {
 		t.Fatalf("error after rotation: %v", err)
 	}
@@ -393,16 +405,14 @@ func TestLogBacktraceAt(t *testing.T) {
 		_, file, line, ok := runtime.Caller(0)
 		setTraceLocation(file, line, ok, +2) // Two lines between Caller and Info calls.
 		Info("we want a stack trace here")
+		logging.wait()
 	}
 	numAppearances := strings.Count(contents(infoLog), infoLine)
-	if numAppearances < 2 {
-		// Need 2 appearances, one in the log header and one in the trace:
-		//   log_test.go:281: I0511 16:36:06.952398 02238 log_test.go:280] we want a stack trace here
-		//   ...
-		//   github.com/glog/glog_test.go:280 (0x41ba91)
-		//   ...
-		// We could be more precise but that would require knowing the details
-		// of the traceback format, which may not be dependable.
+	numLines := strings.Count(contents(infoLog), "\n")
+	if numAppearances < 1 || numLines < 3 {
+		// Need both the expected lines and enough more lines. Since we assume we have
+		// no knowledge of the stacktrace format or the actual code stack being called,
+		// we can't check for a higher number of lines.
 		t.Fatal("got no trace back; log is ", contents(infoLog))
 	}
 }

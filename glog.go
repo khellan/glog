@@ -453,6 +453,7 @@ type loggingT struct {
 	// safely using atomic.LoadInt32.
 	vmodule   moduleSpec // The state of the -vmodule flag.
 	verbosity Level      // V logging level, the value of the -v flag/
+    wg sync.WaitGroup
 }
 
 // buffer holds a byte Buffer for reuse. The zero value is ready for use.
@@ -630,7 +631,9 @@ func (buf *buffer) someDigits(i, d int) int {
 func (l *loggingT) println(s severity, args ...interface{}) {
 	buf, file, line := l.header(s, 0)
 	fmt.Fprintln(buf, args...)
+    l.wg.Add(1)
     go func() {
+        defer l.wg.Done()
     	l.output(s, buf, file, line, false)
     }()
 }
@@ -645,7 +648,9 @@ func (l *loggingT) printDepth(s severity, depth int, args ...interface{}) {
 	if buf.Bytes()[buf.Len()-1] != '\n' {
 		buf.WriteByte('\n')
 	}
+    l.wg.Add(1)
     go func() {
+        defer l.wg.Done()
 	    l.output(s, buf, file, line, false)
     }()
 }
@@ -656,7 +661,9 @@ func (l *loggingT) printf(s severity, format string, args ...interface{}) {
 	if buf.Bytes()[buf.Len()-1] != '\n' {
 		buf.WriteByte('\n')
 	}
+    l.wg.Add(1)
     go func() {
+        defer l.wg.Done()
     	l.output(s, buf, file, line, false)
     }()
 }
@@ -670,7 +677,9 @@ func (l *loggingT) printWithFileLine(s severity, file string, line int, alsoToSt
 	if buf.Bytes()[buf.Len()-1] != '\n' {
 		buf.WriteByte('\n')
 	}
+    l.wg.Add(1)
     go func() {
+        defer l.wg.Done()
 	    l.output(s, buf, file, line, alsoToStderr)
     }()
 }
@@ -745,6 +754,10 @@ func (l *loggingT) output(s severity, buf *buffer, file string, line int, alsoTo
 		atomic.AddInt64(&stats.lines, 1)
 		atomic.AddInt64(&stats.bytes, int64(len(data)))
 	}
+}
+
+func (l* loggingT) wait() {
+    l.wg.Wait()
 }
 
 // timeoutFlush calls Flush and returns when it completes or after timeout
